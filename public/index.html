@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Cloud API</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0f0d;
+            color: #e9edef;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            flex-direction: row;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100% !important;
+                height: auto;
+                max-height: 40vh;
+                display: none;
+            }
+            
+            .sidebar.mobile-visible {
+                display: flex;
+            }
+            
+            .chat-container {
+                height: 100vh;
+            }
+            
+            .mobile-back-btn {
+                display: flex !important;
+            }
+            
+            .sidebar.has-active-chat {
+                display: none;
+            }
+            
+            .chat-container.has-active-chat {
+                display: flex;
+            }
+        }
+
+        .sidebar {
+            width: 350px;
+            background: #111b21;
+            border-right: 1px solid #2a3942;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 15px 20px;
+            background: #202c33;
+            border-bottom: 1px solid #2a3942;
+        }
+
+        .sidebar-header h2 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .status-row {
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+
+        .config-section {
+            padding: 15px 20px;
+            background: #202c33;
+            border-bottom: 1px solid #2a3942;
+        }
+
+        .config-section.collapsed .config-content {
+            display: none;
+        }
+
+        .config-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            padding: 5px 0;
+        }
+
+        .config-header h3 {
+            font-size: 14px;
+            color: #aebac1;
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            color: #8696a0;
+            margin-bottom: 4px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 8px 10px;
+            background: #2a3942;
+            border: 1px solid #3b4a54;
+            border-radius: 5px;
+            color: #e9edef;
+            font-size: 13px;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #00a884;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: #00a884;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-top: 5px;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background: #06cf9c;
+        }
+
+        .btn-secondary {
+            background: #2a3942;
+        }
+
+        .btn-secondary:hover {
+            background: #3b4a54;
+        }
+
+        .search-box {
+            padding: 10px 15px;
+            background: #111b21;
+            border-bottom: 1px solid #2a3942;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 8px 12px;
+            background: #202c33;
+            border: 1px solid #2a3942;
+            border-radius: 8px;
+            color: #e9edef;
+            font-size: 14px;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #00a884;
+        }
+
+        .contacts-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .contact-item {
+            padding: 12px 20px;
+            border-bottom: 1px solid #2a3942;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .contact-item:hover {
+            background: #202c33;
+        }
+
+        .contact-item.active {
+            background: #2a3942;
+        }
+
+        .contact-avatar {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: #00a884;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 500;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .contact-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .contact-name {
+            font-size: 15px;
+            margin-bottom: 3px;
+            font-weight: 500;
+        }
+
+        .contact-number {
+            font-size: 12px;
+            color: #8696a0;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #0b141a;
+        }
+
+        .chat-header {
+            padding: 12px 20px;
+            background: #202c33;
+            border-bottom: 1px solid #2a3942;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .mobile-back-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: #8696a0;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+        }
+
+        .chat-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #00a884;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        .chat-info {
+            flex: 1;
+        }
+
+        .chat-header h2 {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .chat-number {
+            font-size: 12px;
+            color: #8696a0;
+            margin-top: 2px;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background-image: radial-gradient(circle, #0c1317 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .message {
+            max-width: 75%;
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            border-radius: 7.5px;
+            word-wrap: break-word;
+        }
+
+        @media (max-width: 768px) {
+            .message {
+                max-width: 85%;
+            }
+        }
+
+        .message.sent {
+            background: #005c4b;
+            margin-left: auto;
+            border-top-right-radius: 0;
+        }
+
+        .message.received {
+            background: #202c33;
+            margin-right: auto;
+            border-top-left-radius: 0;
+        }
+
+        .message-text {
+            font-size: 14px;
+            line-height: 1.4;
+            margin-bottom: 4px;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #8696a0;
+            text-align: right;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 3px;
+        }
+
+        .message-tick {
+            font-size: 16px;
+        }
+
+        .input-container {
+            padding: 12px 15px;
+            background: #202c33;
+            border-top: 1px solid #2a3942;
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 10px 15px;
+            background: #2a3942;
+            border: 1px solid #3b4a54;
+            border-radius: 8px;
+            color: #e9edef;
+            font-size: 14px;
+            resize: none;
+            font-family: inherit;
+            max-height: 120px;
+        }
+
+        .message-input:focus {
+            outline: none;
+            border-color: #00a884;
+        }
+
+        .send-btn {
+            padding: 10px 20px;
+            background: #00a884;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            height: 42px;
+        }
+
+        .send-btn:hover {
+            background: #06cf9c;
+        }
+
+        .send-btn:disabled {
+            background: #3b4a54;
+            cursor: not-allowed;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-indicator.connected {
+            background: #00a884;
+        }
+
+        .status-indicator.disconnected {
+            background: #f15c6d;
+        }
+
+        .new-chat-btn {
+            margin: 12px 15px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #202c33;
+            padding: 25px;
+            border-radius: 10px;
+            width: 400px;
+            max-width: 90%;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .success-message, .error-message {
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .success-message {
+            background: #00a884;
+            color: #fff;
+        }
+
+        .error-message {
+            background: #f15c6d;
+            color: #fff;
+        }
+
+        .success-message.show, .error-message.show {
+            display: block;
+        }
+
+        .no-results {
+            padding: 20px;
+            text-align: center;
+            color: #8696a0;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>WhatsApp Cloud API</h2>
+                <div class="status-row">
+                    <span class="status-indicator disconnected" id="statusIndicator"></span>
+                    <span id="statusText">Not Configured</span>
+                </div>
+            </div>
+
+            <div class="config-section collapsed" id="configSection">
+                <div class="config-header" onclick="toggleConfig()">
+                    <h3>API Configuration</h3>
+                    <span>▼</span>
+                </div>
+                <div class="config-content">
+                    <div class="input-group">
+                        <label>Phone Number ID</label>
+                        <input type="text" id="phoneNumberId" placeholder="15-digit number">
+                    </div>
+                    <div class="input-group">
+                        <label>Access Token</label>
+                        <input type="password" id="accessToken" placeholder="Your access token">
+                    </div>
+                    <button class="btn" onclick="saveConfig()">Save Configuration</button>
+                    <div class="success-message" id="configSuccess"></div>
+                    <div class="error-message" id="configError"></div>
+                </div>
+            </div>
+
+            <button class="btn new-chat-btn" onclick="openNewChatModal()">+ New Chat</button>
+
+            <div class="search-box">
+                <input type="text" class="search-input" id="searchInput" placeholder="Search contacts..." oninput="filterContacts()">
+            </div>
+
+            <div class="contacts-list" id="contactsList">
+                <div class="no-results">
+                    Configure API and start a new chat
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            <div class="chat-header">
+                <button class="mobile-back-btn" onclick="showSidebar()">←</button>
+                <div class="chat-avatar" id="chatAvatar">?</div>
+                <div class="chat-info">
+                    <h2 id="chatName">Select a contact</h2>
+                    <div class="chat-number" id="chatNumber"></div>
+                </div>
+            </div>
+
+            <div class="messages-container" id="messagesContainer">
+                <div style="text-align: center; color: #8696a0; margin-top: 50px;">
+                    Select a contact to view messages
+                </div>
+            </div>
+
+            <div class="input-container">
+                <textarea class="message-input" id="messageInput" placeholder="Type a message" rows="1" disabled></textarea>
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="newChatModal">
+        <div class="modal-content">
+            <h3>Start New Chat</h3>
+            <div class="input-group">
+                <label>Phone Number (with country code, no +)</label>
+                <input type="text" id="newChatNumber" placeholder="e.g., 971501234567">
+            </div>
+            <div class="input-group">
+                <label>Contact Name (optional)</label>
+                <input type="text" id="newChatName" placeholder="e.g., John Doe">
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button class="btn" onclick="createNewChat()">Start Chat</button>
+                <button class="btn btn-secondary" onclick="closeNewChatModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let contacts = {};
+        let activeContact = null;
+        let allContacts = {};
+
+        function loadSavedConfig() {
+            const saved = localStorage.getItem('whatsappApiConfig');
+            if (saved) {
+                try {
+                    const config = JSON.parse(saved);
+                    document.getElementById('phoneNumberId').value = config.phoneNumberId || '';
+                    document.getElementById('accessToken').value = config.accessToken || '';
+                    
+                    if (config.phoneNumberId && config.accessToken) {
+                        saveConfig();
+                    }
+                } catch (e) {
+                    console.error('Error loading saved config:', e);
+                }
+            }
+        }
+
+        async function saveConfig() {
+            const phoneNumberId = document.getElementById('phoneNumberId').value.trim();
+            const accessToken = document.getElementById('accessToken').value.trim();
+
+            if (!phoneNumberId || !accessToken) {
+                showMessage('configError', 'Please fill in all fields');
+                return;
+            }
+
+            localStorage.setItem('whatsappApiConfig', JSON.stringify({
+                phoneNumberId,
+                accessToken
+            }));
+
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phoneNumberId, accessToken })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage('configSuccess', 'Configuration saved!');
+                    updateStatus(true);
+                    toggleConfig();
+                } else {
+                    showMessage('configError', data.error || 'Failed to save');
+                }
+            } catch (error) {
+                showMessage('configError', 'Network error: ' + error.message);
+            }
+        }
+
+        async function checkConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                updateStatus(data.configured);
+            } catch (error) {
+                console.error('Failed to check config:', error);
+            }
+        }
+
+        function updateStatus(connected) {
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+            
+            if (connected) {
+                indicator.className = 'status-indicator connected';
+                text.textContent = 'Connected';
+            } else {
+                indicator.className = 'status-indicator disconnected';
+                text.textContent = 'Not Configured';
+            }
+        }
+
+        function toggleConfig() {
+            document.getElementById('configSection').classList.toggle('collapsed');
+        }
+
+        function openNewChatModal() {
+            document.getElementById('newChatModal').classList.add('active');
+        }
+
+        function closeNewChatModal() {
+            document.getElementById('newChatModal').classList.remove('active');
+            document.getElementById('newChatNumber').value = '';
+            document.getElementById('newChatName').value = '';
+        }
+
+        function createNewChat() {
+            const number = document.getElementById('newChatNumber').value.trim();
+            const name = document.getElementById('newChatName').value.trim() || number;
+
+            if (!number) {
+                alert('Please enter a phone number');
+                return;
+            }
+
+            if (!contacts[number]) {
+                contacts[number] = {
+                    name: name,
+                    number: number,
+                    messages: []
+                };
+                allContacts = {...contacts};
+                renderContacts();
+            }
+
+            selectContact(number);
+            closeNewChatModal();
+        }
+
+        function getInitials(name) {
+            if (!name) return '?';
+            const parts = name.split(' ');
+            if (parts.length >= 2) {
+                return (parts[0][0] + parts[1][0]).toUpperCase();
+            }
+            return name.substring(0, 2).toUpperCase();
+        }
+
+        function filterContacts() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            
+            if (search === '') {
+                contacts = {...allContacts};
+            } else {
+                contacts = {};
+                Object.keys(allContacts).forEach(key => {
+                    const contact = allContacts[key];
+                    if (contact.name.toLowerCase().includes(search) || 
+                        contact.number.includes(search)) {
+                        contacts[key] = contact;
+                    }
+                });
+            }
+            
+            renderContacts();
+        }
+
+        function renderContacts() {
+            const list = document.getElementById('contactsList');
+            list.innerHTML = '';
+
+            const contactsArray = Object.values(contacts);
+            
+            if (contactsArray.length === 0) {
+                list.innerHTML = '<div class="no-results">No contacts found</div>';
+                return;
+            }
+
+            contactsArray.forEach(contact => {
+                const div = document.createElement('div');
+                div.className = 'contact-item';
+                if (activeContact === contact.number) {
+                    div.classList.add('active');
+                }
+                div.onclick = () => selectContact(contact.number);
+                
+                const initials = getInitials(contact.name);
+                
+                div.innerHTML = `
+                    <div class="contact-avatar">${initials}</div>
+                    <div class="contact-info">
+                        <div class="contact-name">${escapeHtml(contact.name)}</div>
+                        <div class="contact-number">+${contact.number}</div>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function selectContact(number) {
+            activeContact = number;
+            const contact = allContacts[number];
+            
+            document.getElementById('chatName').textContent = contact.name;
+            document.getElementById('chatNumber').textContent = '+' + contact.number;
+            document.getElementById('chatAvatar').textContent = getInitials(contact.name);
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+            
+            if (window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.add('has-active-chat');
+                document.getElementById('chatContainer').classList.add('has-active-chat');
+            }
+            
+            loadMessages(number);
+            renderContacts();
+        }
+
+        function showSidebar() {
+            document.getElementById('sidebar').classList.remove('has-active-chat');
+            document.getElementById('chatContainer').classList.remove('has-active-chat');
+        }
+
+        async function loadMessages(number) {
+            try {
+                const response = await fetch(`/api/messages/${number}`);
+                const data = await response.json();
+                
+                if (allContacts[number]) {
+                    allContacts[number].messages = data.messages || [];
+                    renderMessages();
+                }
+            } catch (error) {
+                console.error('Failed to load messages:', error);
+            }
+        }
+
+        function renderMessages() {
+            const container = document.getElementById('messagesContainer');
+            container.innerHTML = '';
+
+            if (!activeContact || !allContacts[activeContact]) {
+                container.innerHTML = '<div style="text-align: center; color: #8696a0; margin-top: 50px;">Select a contact to view messages</div>';
+                return;
+            }
+
+            allContacts[activeContact].messages.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = `message ${msg.type}`;
+                const time = new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                
+                const tick = msg.type === 'sent' ? '<span class="message-tick">✓✓</span>' : '';
+                
+                div.innerHTML = `
+                    <div class="message-text">${escapeHtml(msg.text)}</div>
+                    <div class="message-time">${tick}${time}</div>
+                `;
+                container.appendChild(div);
+            });
+
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+
+            if (!text || !activeContact) return;
+
+            try {
+                const response = await fetch('/api/send-message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: activeContact,
+                        message: text
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    input.value = '';
+                    input.style.height = 'auto';
+                    loadMessages(activeContact);
+                } else {
+                    alert('Failed to send: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Network error: ' + error.message);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showMessage(elementId, message) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = message ? (elementId.includes('success') ? 'success-message show' : 'error-message show') : elementId.includes('success') ? 'success-message' : 'error-message';
+            
+            if (message) {
+                setTimeout(() => {
+                    el.className = elementId.includes('success') ? 'success-message' : 'error-message';
+                }, 3000);
+            }
+        }
+
+        document.getElementById('messageInput').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        setInterval(() => {
+            if (activeContact) {
+                loadMessages(activeContact);
+            }
+        }, 3000);
+
+        loadSavedConfig();
+        checkConfig();
+    </script>
+</body>
+</html>
