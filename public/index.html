@@ -94,14 +94,15 @@
         .no-results { padding: 40px 20px; text-align: center; color: var(--text-tertiary); font-size: 14px; }
         .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-tertiary); font-size: 15px; padding: 40px; text-align: center; }
         .empty-state-icon { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; display: none; }
-            .sidebar.mobile-visible { display: flex; }
-            .chat-container { display: none; }
-            .chat-container.mobile-visible { display: flex; }
-            .mobile-back-btn { display: block; }
-            .message { max-width: 80%; }
-        }
+       @media (max-width: 768px) {
+    .sidebar { width: 100%; }
+    .sidebar:not(.mobile-visible) { display: none; }
+    .sidebar.mobile-visible { display: flex; }
+    .chat-container:not(.mobile-visible) { display: none; }
+    .chat-container.mobile-visible { display: flex; }
+    .mobile-back-btn { display: block; }
+    .message { max-width: 80%; }
+}
         .settings-panel { background: var(--panel-bg); padding: 20px; border-radius: 12px; margin: 20px; }
         .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border-color); }
         .setting-item:last-child { border-bottom: none; }
