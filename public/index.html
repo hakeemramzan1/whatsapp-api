@@ -1201,118 +1201,138 @@
     }
 
     function renderMessages(messages) {
-        var container = document.getElementById('messagesContainer');
-        container.innerHTML = '';
+    var container = document.getElementById('messagesContainer');
+    container.innerHTML = '';
 
-        if (!messages.length) {
-            var empty = document.createElement('div');
-            empty.className = 'empty-state';
-            empty.innerHTML =
-                '<div class="empty-state-icon">💬</div><div>No messages yet</div>';
-            container.appendChild(empty);
-            return;
+    if (!messages.length) {
+        var empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.innerHTML =
+            '<div class="empty-state-icon">💬</div><div>No messages yet</div>';
+        container.appendChild(empty);
+        return;
+    }
+
+    var lastDate = null;
+
+    messages.forEach(function (msg) {
+        var messageDate = new Date(
+            msg.timestamp || Date.now()
+        ).toDateString();
+
+        if (messageDate !== lastDate) {
+            var divider = document.createElement('div');
+            divider.className = 'date-divider';
+            var span = document.createElement('span');
+            span.textContent = new Date(
+                msg.timestamp || Date.now()
+            ).toLocaleDateString([], {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric'
+            });
+            divider.appendChild(span);
+            container.appendChild(divider);
+            lastDate = messageDate;
         }
 
-        var lastDate = null;
+        var messageEl = document.createElement('div');
+        messageEl.className =
+            'message ' + (msg.type === 'sent' ? 'sent' : 'received');
 
-        messages.forEach(function (msg) {
-            var messageDate = new Date(
-                msg.timestamp || Date.now()
-            ).toDateString();
+        var bubble = document.createElement('div');
+        bubble.className = 'message-bubble';
 
-            if (messageDate !== lastDate) {
-                var divider = document.createElement('div');
-                divider.className = 'date-divider';
-                var span = document.createElement('span');
-                span.textContent = new Date(
-                    msg.timestamp || Date.now()
-                ).toLocaleDateString([], {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric'
-                });
-                divider.appendChild(span);
-                container.appendChild(divider);
-                lastDate = messageDate;
-            }
+        var text = document.createElement('div');
+        text.className = 'message-text';
+        text.textContent = msg.text;
 
-            var messageEl = document.createElement('div');
-            messageEl.className =
-                'message ' + (msg.type === 'sent' ? 'sent' : 'received');
+        var meta = document.createElement('div');
+        meta.className = 'message-meta';
 
-            var bubble = document.createElement('div');
-            bubble.className = 'message-bubble';
+        var time = document.createElement('span');
+        time.textContent = formatTime(msg.timestamp);
+        meta.appendChild(time);
 
-            var text = document.createElement('div');
-            text.className = 'message-text';
-            text.textContent = msg.text;
+        if (msg.type === 'sent') {
+            var status = document.createElement('span');
+            status.className =
+                'message-status' +
+                (msg.status === 'read' ? ' read' : '');
+            status.textContent =
+                msg.status === 'read'
+                    ? '✓✓'
+                    : msg.status === 'delivered'
+                    ? '✓✓'
+                    : '✓';
+            meta.appendChild(status);
+        }
 
-            var meta = document.createElement('div');
-            meta.className = 'message-meta';
+        bubble.appendChild(text);
+        bubble.appendChild(meta);
+        messageEl.appendChild(bubble);
+        container.appendChild(messageEl);
+    });
 
-            var time = document.createElement('span');
-            time.textContent = formatTime(msg.timestamp);
-            meta.appendChild(time);
-
-            if (msg.type === 'sent') {
-                var status = document.createElement('span');
-                status.className =
-                    'message-status' +
-                    (msg.status === 'read' ? ' read' : '');
-                status.textContent =
-                    msg.status === 'read'
-                        ? '✓✓'
-                        : msg.status === 'delivered'
-                        ? '✓✓'
-                        : '✓';
-                meta.appendChild(status);
-            }
-
-            bubble.appendChild(text);
-            bubble.appendChild(meta);
-            messageEl.appendChild(bubble);
-            container.appendChild(messageEl);
-        });
-
-        container.scrollTop = container.scrollHeight;
+    // 🔊 Play sound when a new received message is in this chat
+    if (messages.length) {
+        var last = messages[messages.length - 1];
+        if (last.type === 'received' && state.settings.soundEnabled) {
+            try {
+                notificationSound.currentTime = 0;
+                notificationSound.play().catch(function () {});
+            } catch (e) {}
+        }
     }
+
+    // Auto-scroll to bottom
+    container.scrollTop = container.scrollHeight;
+}
+
 
     function sendMessage() {
-        var input = document.getElementById('messageInput');
-        var message = input.value.trim();
+    var input = document.getElementById('messageInput');
+    var message = input.value.trim();
 
-        if (!message || !state.activeContact) {
-            return;
-        }
-
-        setSendButtonState(true);
-
-        fetch('/api/send-message', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                to: state.activeContact,
-                message: message
-            })
-        })
-            .then(function (response) {
-                if (!response.ok) {
-                    throw new Error('Failed to send');
-                }
-                return response.json();
-            })
-            .then(function () {
-                input.value = '';
-                updateInputHeight();
-                setSendButtonState(false);
-                syncContacts();
-                loadMessages(state.activeContact);
-            })
-            .catch(function (error) {
-                console.error('Send failed:', error);
-                setSendButtonState(false);
-            });
+    // Don't send if there's no text or no selected contact
+    if (!message || !state.activeContact) {
+        return;
     }
+
+    setSendButtonState(true);
+
+    fetch('/api/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            to: state.activeContact,
+            message: message
+        })
+    })
+        .then(function (response) {
+            if (!response.ok) {
+                // Try to read error text from the server so we can show it
+                return response.text().then(function (text) {
+                    throw new Error(text || 'Failed to send');
+                });
+            }
+            return response.json();
+        })
+        .then(function () {
+            // Clear box, resize, refresh chat
+            input.value = '';
+            updateInputHeight();
+            setSendButtonState(false);
+            syncContacts();
+            loadMessages(state.activeContact);
+        })
+        .catch(function (error) {
+            console.error('Send failed:', error);
+            alert('Send failed: ' + error.message);
+            setSendButtonState(false);
+        });
+}
+
 
 function enableMessageInput(enabled) {
     var input = document.getElementById('messageInput');
