@@ -331,8 +331,8 @@
             -webkit-overflow-scrolling: touch;
             padding: 20px;
             background-image:
-                    radial-gradient(circle at 20% 50%, rgba(0, 168, 132, 0.03) 0%, transparent 50%),
-                    radial-gradient(circle at 80% 80%, rgba(0, 168, 132, 0.03) 0%, transparent 50%);
+                radial-gradient(circle at 20% 50%, rgba(0, 168, 132, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(0, 168, 132, 0.03) 0%, transparent 50%);
         }
 
         .messages-container::-webkit-scrollbar {
@@ -763,13 +763,12 @@
         </div>
 
         <div class="input-container">
-    <textarea class="message-input" id="messageInput"
-              placeholder="Type a message" rows="1"></textarea>
-    <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled>
-        Send
-    </button>
-</div>
-
+            <textarea class="message-input" id="messageInput"
+                      placeholder="Type a message" rows="1"></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled>
+                Send
+            </button>
+        </div>
     </div>
 </div>
 
@@ -840,7 +839,9 @@
         settings: {
             soundEnabled: true,
             desktopNotifEnabled: true
-        }
+        },
+        // track last message we saw per contact to avoid sound loops
+        lastMessageTimestamps: {}
     };
 
     var notificationSound = new Audio(
@@ -848,16 +849,16 @@
     );
 
     function init() {
-    loadSettings();
-    loadContacts();
-    checkConfig();
-    requestNotificationPermission();
-    setInterval(pollMessages, 3000);
-    setInterval(syncContacts, 5000);
+        loadSettings();
+        loadContacts();
+        checkConfig();
+        requestNotificationPermission();
+        setInterval(pollMessages, 3000);
+        setInterval(syncContacts, 5000);
 
-    enableMessageInput(false); // Textarea enabled, Send disabled
-}
-
+        // let user type but keep Send disabled until a contact is active
+        enableMessageInput(false);
+    }
 
     function loadSettings() {
         try {
@@ -1201,148 +1202,155 @@
     }
 
     function renderMessages(messages) {
-    var container = document.getElementById('messagesContainer');
-    container.innerHTML = '';
+        var container = document.getElementById('messagesContainer');
+        container.innerHTML = '';
 
-    if (!messages.length) {
-        var empty = document.createElement('div');
-        empty.className = 'empty-state';
-        empty.innerHTML =
-            '<div class="empty-state-icon">💬</div><div>No messages yet</div>';
-        container.appendChild(empty);
-        return;
-    }
+        if (!messages.length) {
+            var empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.innerHTML =
+                '<div class="empty-state-icon">💬</div><div>No messages yet</div>';
+            container.appendChild(empty);
+            return;
+        }
 
-    var lastDate = null;
+        var lastDate = null;
 
-    messages.forEach(function (msg) {
-        var messageDate = new Date(
-            msg.timestamp || Date.now()
-        ).toDateString();
-
-        if (messageDate !== lastDate) {
-            var divider = document.createElement('div');
-            divider.className = 'date-divider';
-            var span = document.createElement('span');
-            span.textContent = new Date(
+        messages.forEach(function (msg) {
+            var messageDate = new Date(
                 msg.timestamp || Date.now()
-            ).toLocaleDateString([], {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric'
-            });
-            divider.appendChild(span);
-            container.appendChild(divider);
-            lastDate = messageDate;
+            ).toDateString();
+
+            if (messageDate !== lastDate) {
+                var divider = document.createElement('div');
+                divider.className = 'date-divider';
+                var span = document.createElement('span');
+                span.textContent = new Date(
+                    msg.timestamp || Date.now()
+                ).toLocaleDateString([], {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                });
+                divider.appendChild(span);
+                container.appendChild(divider);
+                lastDate = messageDate;
+            }
+
+            var messageEl = document.createElement('div');
+            messageEl.className =
+                'message ' + (msg.type === 'sent' ? 'sent' : 'received');
+
+            var bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+
+            var text = document.createElement('div');
+            text.className = 'message-text';
+            text.textContent = msg.text;
+
+            var meta = document.createElement('div');
+            meta.className = 'message-meta';
+
+            var time = document.createElement('span');
+            time.textContent = formatTime(msg.timestamp);
+            meta.appendChild(time);
+
+            if (msg.type === 'sent') {
+                var status = document.createElement('span');
+                status.className =
+                    'message-status' +
+                    (msg.status === 'read' ? ' read' : '');
+                status.textContent =
+                    msg.status === 'read'
+                        ? '✓✓'
+                        : msg.status === 'delivered'
+                        ? '✓✓'
+                        : '✓';
+                meta.appendChild(status);
+            }
+
+            bubble.appendChild(text);
+            bubble.appendChild(meta);
+            messageEl.appendChild(bubble);
+            container.appendChild(messageEl);
+        });
+
+        // 🔊 Play sound only when there is a NEW received message in this chat
+        if (messages.length) {
+            var last = messages[messages.length - 1];
+            var latestTs = last.timestamp || 0;
+            var key = state.activeContact || 'global';
+            var previousTs = state.lastMessageTimestamps[key] || 0;
+
+            if (
+                latestTs > previousTs &&
+                last.type === 'received' &&
+                state.settings.soundEnabled
+            ) {
+                try {
+                    notificationSound.currentTime = 0;
+                    notificationSound.play().catch(function () {});
+                } catch (e) {}
+            }
+
+            state.lastMessageTimestamps[key] = latestTs;
         }
 
-        var messageEl = document.createElement('div');
-        messageEl.className =
-            'message ' + (msg.type === 'sent' ? 'sent' : 'received');
-
-        var bubble = document.createElement('div');
-        bubble.className = 'message-bubble';
-
-        var text = document.createElement('div');
-        text.className = 'message-text';
-        text.textContent = msg.text;
-
-        var meta = document.createElement('div');
-        meta.className = 'message-meta';
-
-        var time = document.createElement('span');
-        time.textContent = formatTime(msg.timestamp);
-        meta.appendChild(time);
-
-        if (msg.type === 'sent') {
-            var status = document.createElement('span');
-            status.className =
-                'message-status' +
-                (msg.status === 'read' ? ' read' : '');
-            status.textContent =
-                msg.status === 'read'
-                    ? '✓✓'
-                    : msg.status === 'delivered'
-                    ? '✓✓'
-                    : '✓';
-            meta.appendChild(status);
-        }
-
-        bubble.appendChild(text);
-        bubble.appendChild(meta);
-        messageEl.appendChild(bubble);
-        container.appendChild(messageEl);
-    });
-
-    // 🔊 Play sound when a new received message is in this chat
-    if (messages.length) {
-        var last = messages[messages.length - 1];
-        if (last.type === 'received' && state.settings.soundEnabled) {
-            try {
-                notificationSound.currentTime = 0;
-                notificationSound.play().catch(function () {});
-            } catch (e) {}
-        }
+        // Auto-scroll to bottom
+        container.scrollTop = container.scrollHeight;
     }
-
-    // Auto-scroll to bottom
-    container.scrollTop = container.scrollHeight;
-}
-
 
     function sendMessage() {
-    var input = document.getElementById('messageInput');
-    var message = input.value.trim();
+        var input = document.getElementById('messageInput');
+        var message = input.value.trim();
 
-    // Don't send if there's no text or no selected contact
-    if (!message || !state.activeContact) {
-        return;
+        // Don't send if there's no text or no selected contact
+        if (!message || !state.activeContact) {
+            return;
+        }
+
+        setSendButtonState(true);
+
+        fetch('/api/send-message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to: state.activeContact,
+                message: message
+            })
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    // Try to read error text from the server so we can show it
+                    return response.text().then(function (text) {
+                        throw new Error(text || 'Failed to send');
+                    });
+                }
+                return response.json();
+            })
+            .then(function () {
+                // Clear box, resize, refresh chat
+                input.value = '';
+                updateInputHeight();
+                setSendButtonState(false);
+                syncContacts();
+                loadMessages(state.activeContact);
+            })
+            .catch(function (error) {
+                console.error('Send failed:', error);
+                alert('Send failed: ' + error.message);
+                setSendButtonState(false);
+            });
     }
 
-    setSendButtonState(true);
+    function enableMessageInput(enabled) {
+        var input = document.getElementById('messageInput');
+        var sendBtn = document.getElementById('sendBtn');
 
-    fetch('/api/send-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            to: state.activeContact,
-            message: message
-        })
-    })
-        .then(function (response) {
-            if (!response.ok) {
-                // Try to read error text from the server so we can show it
-                return response.text().then(function (text) {
-                    throw new Error(text || 'Failed to send');
-                });
-            }
-            return response.json();
-        })
-        .then(function () {
-            // Clear box, resize, refresh chat
-            input.value = '';
-            updateInputHeight();
-            setSendButtonState(false);
-            syncContacts();
-            loadMessages(state.activeContact);
-        })
-        .catch(function (error) {
-            console.error('Send failed:', error);
-            alert('Send failed: ' + error.message);
-            setSendButtonState(false);
-        });
-}
-
-
-function enableMessageInput(enabled) {
-    var input = document.getElementById('messageInput');
-    var sendBtn = document.getElementById('sendBtn');
-
-    // Always let the user type; only control the Send button.
-    input.disabled = false;
-    sendBtn.disabled = !enabled || !input.value.trim();
-}
-
+        // Always let the user type; only control the Send button.
+        input.disabled = false;
+        sendBtn.disabled = !enabled || !input.value.trim();
+    }
 
     function setSendButtonState(isSending) {
         var sendBtn = document.getElementById('sendBtn');
@@ -1515,4 +1523,3 @@ function enableMessageInput(enabled) {
 </script>
 </body>
 </html>
-
