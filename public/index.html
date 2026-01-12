@@ -280,7 +280,13 @@
                 const data = await response.json();
                 data.contacts.forEach(contact => {
                     if (!state.contacts[contact.number]) state.contacts[contact.number] = { number: contact.number, name: contact.name || contact.number, lastMessage: contact.lastMessage || '', lastMessageTime: contact.lastMessageTime || Date.now(), unreadCount: contact.unreadCount || 0 };
-                    else state.contacts[contact.number] = { ...state.contacts[contact.number], lastMessage: contact.lastMessage || state.contacts[contact.number].lastMessage, lastMessageTime: contact.lastMessageTime || state.contacts[contact.number].lastMessageTime, unreadCount: contact.unreadCount || 0 };
+                    else {
+    const prevLastMessage = state.contacts[contact.number].lastMessage;
+    state.contacts[contact.number] = { ...state.contacts[contact.number], lastMessage: contact.lastMessage || state.contacts[contact.number].lastMessage, lastMessageTime: contact.lastMessageTime || state.contacts[contact.number].lastMessageTime, unreadCount: contact.unreadCount || 0 };
+    if (contact.lastMessage && contact.lastMessage !== prevLastMessage && contact.number !== state.activeContact) {
+        showNotification(contact.name || contact.number, contact.lastMessage);
+    }
+} lastMessageTime: contact.lastMessageTime || state.contacts[contact.number].lastMessageTime, unreadCount: contact.unreadCount || 0 };
                 });
                 saveContactsToStorage(); renderContacts();
                 if (state.activeContact) loadMessages(state.activeContact);
@@ -349,6 +355,14 @@
             selectContact(number); closeModal('newChatModal'); document.getElementById('newChatNumber').value = ''; document.getElementById('newChatName').value = '';
         }
         function requestNotificationPermission() { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); }
+function showNotification(contactName, message) {
+    if (state.settings.soundEnabled) {
+        notificationSound.play().catch(e => console.log('Sound play failed:', e));
+    }
+    if (state.settings.desktopNotifEnabled && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification(contactName, { body: message, icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%2300a884"/></svg>' });
+    }
+}
         function toggleSound() { state.settings.soundEnabled = document.getElementById('soundToggle').checked; localStorage.setItem('whatsappSettings', JSON.stringify(state.settings)); }
         function toggleDesktopNotif() { state.settings.desktopNotifEnabled = document.getElementById('desktopNotifToggle').checked; localStorage.setItem('whatsappSettings', JSON.stringify(state.settings)); }
         function renderQuickReplies() {
