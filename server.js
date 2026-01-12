@@ -25,8 +25,8 @@ let config = {
     webhookVerifyToken: 'your_verify_token_123'
 };
 
-// 🔁 n8n POST webhook URL (the one that forwards to Zapier)
-const N8N_WEBHOOK_URL = 'https://hakeemirehs21ha.app.n8n.cloud/webhook-test/whatsapp';
+// ✅ USE YOUR REAL n8n PRODUCTION WEBHOOK
+const N8N_WEBHOOK_URL = 'https://hakeemirehs21ha.app.n8n.cloud/webhook/whatsapp';
 
 /* ===============================
    SAVE CONFIG
@@ -217,6 +217,7 @@ app.post('/webhook', async (req, res) => {
         if (body.object === 'whatsapp_business_account') {
             body.entry.forEach(entry => {
                 entry.changes.forEach(change => {
+
                     /* Status updates */
                     if (change.value.statuses) {
                         change.value.statuses.forEach(status => {
@@ -242,7 +243,7 @@ app.post('/webhook', async (req, res) => {
                             const text = msg.text?.body || '[Media message]';
                             const timestamp = parseInt(msg.timestamp) * 1000;
 
-                            console.log(`📩 New incoming message from ${from}: ${text}`);
+                            console.log(`📩 Incoming message from ${from}: ${text}`);
 
                             if (!messageStore[from]) messageStore[from] = [];
 
@@ -278,19 +279,16 @@ app.post('/webhook', async (req, res) => {
             });
         }
 
-        // 🔁 Forward the raw webhook payload to n8n so your old automations still run
+        // ✅ Forward webhook to n8n PRODUCTION
         try {
             await axios.post(N8N_WEBHOOK_URL, body);
-            console.log('↪️ Forwarded webhook to n8n');
-        } catch (forwardErr) {
-            console.error(
-                '❌ Error forwarding to n8n:',
-                forwardErr.response?.data || forwardErr.message
-            );
-            // Still reply 200 to Meta so WhatsApp delivery isn't broken
+            console.log('🔁 Forwarded webhook to n8n');
+        } catch (err) {
+            console.error('❌ Error forwarding to n8n:', err.response?.data || err.message);
         }
 
         res.sendStatus(200);
+
     } catch (error) {
         console.error('❌ Webhook error:', error);
         res.sendStatus(500);
