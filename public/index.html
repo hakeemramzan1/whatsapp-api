@@ -848,13 +848,16 @@
     );
 
     function init() {
-        loadSettings();
-        loadContacts();
-        checkConfig();
-        requestNotificationPermission();
-        setInterval(pollMessages, 3000);
-        setInterval(syncContacts, 5000);
-    }
+    loadSettings();
+    loadContacts();
+    checkConfig();
+    requestNotificationPermission();
+    setInterval(pollMessages, 3000);
+    setInterval(syncContacts, 5000);
+
+    enableMessageInput(false); // Textarea enabled, Send disabled
+}
+
 
     function loadSettings() {
         try {
@@ -1311,12 +1314,15 @@
             });
     }
 
-    function enableMessageInput(enabled) {
-        var input = document.getElementById('messageInput');
-        var sendBtn = document.getElementById('sendBtn');
-        input.disabled = !enabled;
-        sendBtn.disabled = !enabled || !input.value.trim();
-    }
+function enableMessageInput(enabled) {
+    var input = document.getElementById('messageInput');
+    var sendBtn = document.getElementById('sendBtn');
+
+    // Always let the user type; only control the Send button.
+    input.disabled = false;
+    sendBtn.disabled = !enabled || !input.value.trim();
+}
+
 
     function setSendButtonState(isSending) {
         var sendBtn = document.getElementById('sendBtn');
