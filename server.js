@@ -221,13 +221,16 @@ app.post('/webhook', (req, res) => {
                                 messageStore[from] = [];
                             }
                             
-                            messageStore[from].push({
+                            const newMessage = {
                                 type: 'received',
                                 text: text,
                                 timestamp: timestamp,
                                 messageId: message.id,
-                                status: 'received'
-                            });
+                                status: 'received',
+                                isNew: true
+                            };
+                            
+                            messageStore[from].push(newMessage);
                             
                             if (!contactStore[from]) {
                                 contactStore[from] = {
