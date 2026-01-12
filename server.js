@@ -7,21 +7,27 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
-// Serve frontend from ./public (put index.html there)
-app.use(express.static('public'));
+app.use(express.static('public')); // Serve /public folder
 
-// In-memory stores (reset when server restarts)
-let messageStore = {};   // { phoneNumber: [ { type, text, timestamp, messageId, status } ] }
-let contactStore = {};   // { phoneNumber: { number, name, lastMessage, lastMessageTime, unreadCount } }
-let messageStatus = {};  // { messageId: status }
+// Explicitly serve index.html at root
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// In-memory data store
+let messageStore = {};
+let contactStore = {};
+let messageStatus = {};
 
 let config = {
     phoneNumberId: '',
     accessToken: '',
-    webhookVerifyToken: 'your_verify_token_123' // change this to your own token
+    webhookVerifyToken: 'your_verify_token_123'
 };
 
-// Save API config from frontend
+/* ===============================
+   SAVE CONFIG
+================================ */
 app.post('/api/config', (req, res) => {
     const { phoneNumberId, accessToken } = req.body;
 
@@ -33,10 +39,12 @@ app.post('/api/config', (req, res) => {
     config.accessToken = accessToken;
 
     console.log('✅ Configuration saved');
-    res.json({ success: true, message: 'Configuration saved' });
+    res.json({ success: true });
 });
 
-// Tell frontend whether API is configured
+/* ===============================
+   GET CONFIG STATUS
+================================ */
 app.get('/api/config', (req, res) => {
     res.json({
         configured: !!(config.phoneNumberId && config.accessToken),
@@ -44,7 +52,9 @@ app.get('/api/config', (req, res) => {
     });
 });
 
-// Send a WhatsApp message
+/* ===============================
+   SEND MESSAGE
+================================ */
 app.post('/api/send-message', async (req, res) => {
     const { to, message } = req.body;
 
@@ -63,7 +73,7 @@ app.post('/api/send-message', async (req, res) => {
             `https://graph.facebook.com/v18.0/${config.phoneNumberId}/messages`,
             {
                 messaging_product: 'whatsapp',
-                to: to,
+                to,
                 type: 'text',
                 text: { body: message }
             },
@@ -79,15 +89,13 @@ app.post('/api/send-message', async (req, res) => {
 
         const messageId = response.data.messages[0].id;
 
-        if (!messageStore[to]) {
-            messageStore[to] = [];
-        }
+        if (!messageStore[to]) messageStore[to] = [];
 
         const msgData = {
             type: 'sent',
             text: message,
             timestamp: Date.now(),
-            messageId: messageId,
+            messageId,
             status: 'sent'
         };
 
@@ -107,11 +115,7 @@ app.post('/api/send-message', async (req, res) => {
             contactStore[to].lastMessageTime = Date.now();
         }
 
-        res.json({
-            success: true,
-            messageId: messageId,
-            data: response.data
-        });
+        res.json({ success: true, messageId });
     } catch (error) {
         console.error('❌ Error sending message:', error.response?.data || error.message);
         res.status(500).json({
@@ -121,14 +125,18 @@ app.post('/api/send-message', async (req, res) => {
     }
 });
 
-// Get messages for a contact
+/* ===============================
+   GET MESSAGES
+================================ */
 app.get('/api/messages/:phoneNumber', (req, res) => {
     const phoneNumber = req.params.phoneNumber;
     const messages = messageStore[phoneNumber] || [];
     res.json({ messages });
 });
 
-// Get contact list
+/* ===============================
+   GET CONTACTS
+================================ */
 app.get('/api/contacts', (req, res) => {
     const contacts = Object.keys(contactStore).map(number => ({
         number,
@@ -136,7 +144,7 @@ app.get('/api/contacts', (req, res) => {
         lastMessage: contactStore[number].lastMessage,
         lastMessageTime: contactStore[number].lastMessageTime,
         unreadCount: contactStore[number].unreadCount || 0,
-        messageCount: messageStore[number]?.length || 0
+        messageCount: (messageStore[number] || []).length
     }));
 
     contacts.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0));
@@ -144,7 +152,9 @@ app.get('/api/contacts', (req, res) => {
     res.json({ contacts });
 });
 
-// Mark a chat as read (reset unread count)
+/* ===============================
+   MARK AS READ
+================================ */
 app.post('/api/mark-read/:phoneNumber', (req, res) => {
     const phoneNumber = req.params.phoneNumber;
 
@@ -155,27 +165,31 @@ app.post('/api/mark-read/:phoneNumber', (req, res) => {
     res.json({ success: true });
 });
 
-// Update contact name / create contact
+/* ===============================
+   UPDATE CONTACT
+================================ */
 app.post('/api/contacts/:phoneNumber/update', (req, res) => {
-    const phoneNumber = req.params.phoneNumber;
+    const number = req.params.phoneNumber;
     const { name } = req.body;
 
-    if (!contactStore[phoneNumber]) {
-        contactStore[phoneNumber] = {
-            number: phoneNumber,
-            name: name || phoneNumber,
+    if (!contactStore[number]) {
+        contactStore[number] = {
+            number,
+            name: name || number,
             lastMessage: '',
             lastMessageTime: Date.now(),
             unreadCount: 0
         };
     } else {
-        contactStore[phoneNumber].name = name || phoneNumber;
+        contactStore[number].name = name || number;
     }
 
     res.json({ success: true });
 });
 
-// Webhook verification (GET)
+/* ===============================
+   WEBHOOK VERIFY (GET)
+================================ */
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -190,7 +204,9 @@ app.get('/webhook', (req, res) => {
     }
 });
 
-// Webhook receiver (POST)
+/* ===============================
+   WEBHOOK RECEIVER (POST)
+================================ */
 app.post('/webhook', (req, res) => {
     try {
         const body = req.body;
@@ -198,7 +214,7 @@ app.post('/webhook', (req, res) => {
         if (body.object === 'whatsapp_business_account') {
             body.entry.forEach(entry => {
                 entry.changes.forEach(change => {
-                    // Status updates (sent, delivered, read, etc.)
+                    /* Status updates */
                     if (change.value.statuses) {
                         change.value.statuses.forEach(status => {
                             const messageId = status.id;
@@ -206,11 +222,9 @@ app.post('/webhook', (req, res) => {
 
                             messageStatus[messageId] = newStatus;
 
-                            Object.keys(messageStore).forEach(number => {
-                                messageStore[number].forEach(msg => {
-                                    if (msg.messageId === messageId) {
-                                        msg.status = newStatus;
-                                    }
+                            Object.keys(messageStore).forEach(phone => {
+                                messageStore[phone].forEach(msg => {
+                                    if (msg.messageId === messageId) msg.status = newStatus;
                                 });
                             });
 
@@ -218,31 +232,25 @@ app.post('/webhook', (req, res) => {
                         });
                     }
 
-                    // Incoming messages
+                    /* Incoming messages */
                     if (change.field === 'messages' && change.value.messages) {
-                        const messages = change.value.messages;
+                        change.value.messages.forEach(msg => {
+                            const from = msg.from;
+                            const text = msg.text?.body || '[Media message]';
+                            const timestamp = parseInt(msg.timestamp) * 1000;
 
-                        messages.forEach(message => {
-                            const from = message.from;
-                            const text = message.text?.body || '[Media message]';
-                            const timestamp = parseInt(message.timestamp, 10) * 1000;
+                            console.log(`📩 New incoming message from ${from}: ${text}`);
 
-                            console.log(`📩 Received message from ${from}: ${text}`);
+                            if (!messageStore[from]) messageStore[from] = [];
 
-                            if (!messageStore[from]) {
-                                messageStore[from] = [];
-                            }
-
-                            const newMessage = {
+                            messageStore[from].push({
                                 type: 'received',
-                                text: text,
-                                timestamp: timestamp,
-                                messageId: message.id,
+                                text,
+                                timestamp,
+                                messageId: msg.id,
                                 status: 'received',
                                 isNew: true
-                            };
-
-                            messageStore[from].push(newMessage);
+                            });
 
                             const contactName =
                                 change.value.contacts?.[0]?.profile?.name || from;
@@ -267,7 +275,6 @@ app.post('/webhook', (req, res) => {
             });
         }
 
-        // Always 200 quickly so WhatsApp doesn't retry
         res.sendStatus(200);
     } catch (error) {
         console.error('❌ Webhook error:', error);
@@ -275,12 +282,12 @@ app.post('/webhook', (req, res) => {
     }
 });
 
+/* ===============================
+   START SERVER
+================================ */
 app.listen(PORT, () => {
-    console.log('🚀 WhatsApp Cloud API Server Started');
-    console.log('====================================');
-    console.log(`📱 Open in browser: http://localhost:${PORT}`);
-    console.log(`🔗 Webhook URL: http://localhost:${PORT}/webhook`);
-    console.log(`🔐 Webhook Verify Token: ${config.webhookVerifyToken}`);
-    console.log('====================================');
-    console.log('Server is running and ready!');
+    console.log('🚀 WhatsApp API Server Started');
+    console.log(`🌍 URL: http://localhost:${PORT}`);
+    console.log(`🔗 Webhook: /webhook`);
+    console.log(`🔐 Verify Token: ${config.webhookVerifyToken}`);
 });
