@@ -1,424 +1,1017 @@
-diff --git a/public/index.html b/public/index.html
-index dec0f7930ea0037284b135bfded81234eca91ecc..49eb9f7792987afa260758b11fff8b0b9c132c61 100644
---- a/public/index.html
-+++ b/public/index.html
-@@ -968,25 +968,419 @@
-                         }
-                     }
-                 });
- 
-                 saveContactsToStorage();
-                 renderContacts();
- 
-                 if (state.activeContact) {
-                     loadMessages(state.activeContact);
-                 }
-             }).catch(function(error) {
-                 console.error('Sync failed:', error);
-             });
-         }
- 
-         function saveContactsToStorage() {
-             try {
-                 localStorage.setItem('whatsappContacts', JSON.stringify(state.contacts));
-             } catch (e) {
-                 console.error('Error saving contacts:', e);
-             }
-         }
- 
-         function renderContacts() {
-             var list = document.getElementById('contactsList');
-+            list.innerHTML = '';
-+
-+            var contactsArray = Object.keys(state.contacts).map(function(key) {
-+                return state.contacts[key];
-+            });
-+
-+            contactsArray.sort(function(a, b) {
-+                return (b.lastMessageTime || 0) - (a.lastMessageTime || 0);
-+            });
-+
-+            var searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
-+            if (searchTerm) {
-+                contactsArray = contactsArray.filter(function(contact) {
-+                    return (
-+                        (contact.name || '').toLowerCase().includes(searchTerm) ||
-+                        contact.number.toLowerCase().includes(searchTerm)
-+                    );
-+                });
-+            }
-+
-+            if (!contactsArray.length) {
-+                var empty = document.createElement('div');
-+                empty.className = 'no-results';
-+                empty.textContent = searchTerm ? 'No results found' : 'No contacts yet';
-+                list.appendChild(empty);
-+                return;
-+            }
-+
-+            contactsArray.forEach(function(contact) {
-+                var item = document.createElement('div');
-+                item.className = 'contact-item' + (state.activeContact === contact.number ? ' active' : '');
-+                item.onclick = function() {
-+                    selectContact(contact.number);
-+                };
-+
-+                var avatar = document.createElement('div');
-+                avatar.className = 'contact-avatar';
-+                avatar.textContent = (contact.name || contact.number).charAt(0).toUpperCase();
-+
-+                var info = document.createElement('div');
-+                info.className = 'contact-info';
-+
-+                var header = document.createElement('div');
-+                header.className = 'contact-header';
-+
-+                var name = document.createElement('div');
-+                name.className = 'contact-name';
-+                name.textContent = contact.name || contact.number;
-+
-+                var time = document.createElement('div');
-+                time.className = 'contact-time';
-+                time.textContent = formatTime(contact.lastMessageTime);
-+
-+                header.appendChild(name);
-+                header.appendChild(time);
-+
-+                var preview = document.createElement('div');
-+                preview.className = 'contact-preview';
-+                preview.textContent = contact.lastMessage || 'No messages yet';
-+
-+                info.appendChild(header);
-+                info.appendChild(preview);
-+
-+                item.appendChild(avatar);
-+                item.appendChild(info);
-+
-+                if (contact.unreadCount > 0) {
-+                    var badge = document.createElement('div');
-+                    badge.className = 'unread-badge';
-+                    badge.textContent = contact.unreadCount;
-+                    item.appendChild(badge);
-+                }
-+
-+                list.appendChild(item);
-+            });
-+        }
-+
-+        function formatTime(timestamp) {
-+            if (!timestamp) return '';
-+            var date = new Date(timestamp);
-+            var now = new Date();
-+            var sameDay = date.toDateString() === now.toDateString();
-+
-+            if (sameDay) {
-+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-+            }
-+
-+            return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-+        }
-+
-+        function handleSearch() {
-+            renderContacts();
-+        }
-+
-+        function selectContact(number) {
-+            state.activeContact = number;
-+            if (state.contacts[number]) {
-+                state.contacts[number].unreadCount = 0;
-+                saveContactsToStorage();
-+            }
-+
-+            updateChatHeader(number);
-+            renderContacts();
-+            enableMessageInput(true);
-+            loadMessages(number);
-+            showChat();
-+
-+            fetch('/api/mark-read/' + encodeURIComponent(number), {
-+                method: 'POST'
-+            }).catch(function(error) {
-+                console.error('Mark read failed:', error);
-+            });
-+        }
-+
-+        function updateChatHeader(number) {
-+            var contact = state.contacts[number];
-+            if (!contact) return;
-+
-+            document.getElementById('chatName').textContent = contact.name || contact.number;
-+            document.getElementById('chatAvatar').textContent = (contact.name || contact.number).charAt(0).toUpperCase();
-+            document.getElementById('chatStatus').textContent = contact.number;
-+        }
-+
-+        function loadMessages(number) {
-+            fetch('/api/messages/' + encodeURIComponent(number)).then(function(response) {
-+                return response.json();
-+            }).then(function(data) {
-+                renderMessages(data.messages || []);
-+            }).catch(function(error) {
-+                console.error('Load messages failed:', error);
-+            });
-+        }
-+
-+        function renderMessages(messages) {
-+            var container = document.getElementById('messagesContainer');
-+            container.innerHTML = '';
-+
-+            if (!messages.length) {
-+                var empty = document.createElement('div');
-+                empty.className = 'empty-state';
-+                empty.innerHTML = '<div class="empty-state-icon">💬</div><div>No messages yet</div>';
-+                container.appendChild(empty);
-+                return;
-+            }
-+
-+            var lastDate = null;
-+
-+            messages.forEach(function(msg) {
-+                var messageDate = new Date(msg.timestamp || Date.now()).toDateString();
-+                if (messageDate !== lastDate) {
-+                    var divider = document.createElement('div');
-+                    divider.className = 'date-divider';
-+                    var span = document.createElement('span');
-+                    span.textContent = new Date(msg.timestamp || Date.now()).toLocaleDateString([], {
-+                        weekday: 'short',
-+                        month: 'short',
-+                        day: 'numeric'
-+                    });
-+                    divider.appendChild(span);
-+                    container.appendChild(divider);
-+                    lastDate = messageDate;
-+                }
-+
-+                var messageEl = document.createElement('div');
-+                messageEl.className = 'message ' + (msg.type === 'sent' ? 'sent' : 'received');
-+
-+                var bubble = document.createElement('div');
-+                bubble.className = 'message-bubble';
-+
-+                var text = document.createElement('div');
-+                text.className = 'message-text';
-+                text.textContent = msg.text;
-+
-+                var meta = document.createElement('div');
-+                meta.className = 'message-meta';
-+                var time = document.createElement('span');
-+                time.textContent = formatTime(msg.timestamp);
-+                meta.appendChild(time);
-+
-+                if (msg.type === 'sent') {
-+                    var status = document.createElement('span');
-+                    status.className = 'message-status' + (msg.status === 'read' ? ' read' : '');
-+                    status.textContent = msg.status === 'read' ? '✓✓' : msg.status === 'delivered' ? '✓✓' : '✓';
-+                    meta.appendChild(status);
-+                }
-+
-+                bubble.appendChild(text);
-+                bubble.appendChild(meta);
-+                messageEl.appendChild(bubble);
-+                container.appendChild(messageEl);
-+            });
-+
-+            container.scrollTop = container.scrollHeight;
-+        }
-+
-+        function sendMessage() {
-+            var input = document.getElementById('messageInput');
-+            var message = input.value.trim();
-+
-+            if (!message || !state.activeContact) {
-+                return;
-+            }
-+
-+            setSendButtonState(true);
-+
-+            fetch('/api/send-message', {
-+                method: 'POST',
-+                headers: {
-+                    'Content-Type': 'application/json'
-+                },
-+                body: JSON.stringify({
-+                    to: state.activeContact,
-+                    message: message
-+                })
-+            }).then(function(response) {
-+                if (!response.ok) {
-+                    throw new Error('Failed to send');
-+                }
-+                return response.json();
-+            }).then(function() {
-+                input.value = '';
-+                updateInputHeight();
-+                setSendButtonState(false);
-+                syncContacts();
-+                loadMessages(state.activeContact);
-+            }).catch(function(error) {
-+                console.error('Send failed:', error);
-+                setSendButtonState(false);
-+            });
-+        }
-+
-+        function enableMessageInput(enabled) {
-+            var input = document.getElementById('messageInput');
-+            var sendBtn = document.getElementById('sendBtn');
-+            input.disabled = !enabled;
-+            sendBtn.disabled = !enabled || !input.value.trim();
-+        }
-+
-+        function setSendButtonState(isSending) {
-+            var sendBtn = document.getElementById('sendBtn');
-+            sendBtn.disabled = isSending || !document.getElementById('messageInput').value.trim();
-+            sendBtn.textContent = isSending ? 'Sending...' : 'Send';
-+        }
-+
-+        function updateInputHeight() {
-+            var input = document.getElementById('messageInput');
-+            input.style.height = 'auto';
-+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-+            setSendButtonState(false);
-+        }
-+
-+        function openModal(id) {
-+            document.getElementById(id).classList.add('active');
-+        }
-+
-+        function closeModal(id) {
-+            document.getElementById(id).classList.remove('active');
-+        }
-+
-+        function openNewChatModal() {
-+            openModal('newChatModal');
-+        }
-+
-+        function openSettingsModal() {
-+            openModal('settingsModal');
-+        }
-+
-+        function createNewChat() {
-+            var numberInput = document.getElementById('newChatNumber');
-+            var nameInput = document.getElementById('newChatName');
-+            var number = numberInput.value.trim();
-+            var name = nameInput.value.trim();
-+
-+            if (!number) {
-+                alert('Please enter a phone number.');
-+                return;
-+            }
-+
-+            fetch('/api/contacts/' + encodeURIComponent(number) + '/update', {
-+                method: 'POST',
-+                headers: {
-+                    'Content-Type': 'application/json'
-+                },
-+                body: JSON.stringify({ name: name || number })
-+            }).then(function(response) {
-+                if (!response.ok) {
-+                    throw new Error('Failed to create contact');
-+                }
-+                return response.json();
-+            }).then(function() {
-+                state.contacts[number] = {
-+                    number: number,
-+                    name: name || number,
-+                    lastMessage: '',
-+                    lastMessageTime: Date.now(),
-+                    unreadCount: 0
-+                };
-+                saveContactsToStorage();
-+                renderContacts();
-+                selectContact(number);
-+                numberInput.value = '';
-+                nameInput.value = '';
-+                closeModal('newChatModal');
-+            }).catch(function(error) {
-+                console.error('New chat failed:', error);
-+            });
-+        }
-+
-+        function markAsUnread() {
-+            if (!state.activeContact || !state.contacts[state.activeContact]) {
-+                return;
-+            }
-+
-+            state.contacts[state.activeContact].unreadCount = 1;
-+            saveContactsToStorage();
-+            renderContacts();
-+        }
-+
-+        function showNotification(title, message) {
-+            if (state.settings.soundEnabled) {
-+                notificationSound.currentTime = 0;
-+                notificationSound.play().catch(function() {});
-+            }
-+
-+            if (!state.settings.desktopNotifEnabled) {
-+                return;
-+            }
-+
-+            if ('Notification' in window && Notification.permission === 'granted') {
-+                new Notification(title, { body: message });
-+            }
-+        }
-+
-+        function requestNotificationPermission() {
-+            if (!('Notification' in window)) {
-+                return;
-+            }
-+
-+            if (Notification.permission === 'default') {
-+                Notification.requestPermission();
-+            }
-+        }
-+
-+        function toggleSound() {
-+            state.settings.soundEnabled = document.getElementById('soundToggle').checked;
-+            localStorage.setItem('whatsappSettings', JSON.stringify(state.settings));
-+        }
-+
-+        function toggleDesktopNotif() {
-+            state.settings.desktopNotifEnabled = document.getElementById('desktopNotifToggle').checked;
-+            localStorage.setItem('whatsappSettings', JSON.stringify(state.settings));
-+            requestNotificationPermission();
-+        }
-+
-+        function showMessage(id, text) {
-+            var element = document.getElementById(id);
-+            element.textContent = text;
-+            element.classList.add('show');
-+            setTimeout(function() {
-+                element.classList.remove('show');
-+            }, 2000);
-+        }
-+
-+        function showSidebar() {
-+            document.getElementById('sidebar').classList.remove('hide-mobile');
-+            document.getElementById('chatContainer').classList.remove('show-mobile');
-+        }
-+
-+        function showChat() {
-+            document.getElementById('sidebar').classList.add('hide-mobile');
-+            document.getElementById('chatContainer').classList.add('show-mobile');
-+        }
-+
-+        function pollMessages() {
-+            if (state.activeContact) {
-+                loadMessages(state.activeContact);
-+            }
-+        }
-+
-+        document.addEventListener('DOMContentLoaded', function() {
-+            var messageInput = document.getElementById('messageInput');
-+            messageInput.addEventListener('input', updateInputHeight);
-+            messageInput.addEventListener('keydown', function(event) {
-+                if (event.key === 'Enter' && !event.shiftKey) {
-+                    event.preventDefault();
-+                    sendMessage();
-+                }
-+            });
-+
-+            init();
-+        });
-+    </script>
-+</body>
-+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WhatsApp API Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #111b21;
+            color: #e9edef;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #app {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .sidebar {
+            width: 30%;
+            max-width: 380px;
+            min-width: 260px;
+            background: #202c33;
+            border-right: 1px solid #202c33;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 12px 16px;
+            background: #202c33;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            border-bottom: 1px solid #202c33;
+        }
+
+        .sidebar-header-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .sidebar-header-actions button {
+            background: #00a884;
+            border: none;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .sidebar-header-actions button + button {
+            margin-left: 4px;
+            background: #202c33;
+            border: 1px solid #8696a0;
+            color: #e9edef;
+        }
+
+        .search {
+            padding: 8px;
+            border-bottom: 1px solid #202c33;
+        }
+
+        .search input {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: none;
+            outline: none;
+            background: #111b21;
+            color: #e9edef;
+        }
+
+        .contacts-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .contact-item {
+            display: flex;
+            padding: 10px 12px;
+            cursor: pointer;
+            align-items: center;
+            border-bottom: 1px solid #202c33;
+        }
+
+        .contact-item:hover {
+            background: #202c33;
+        }
+
+        .contact-item.active {
+            background: #005c4b;
+        }
+
+        .contact-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #202c33;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            font-weight: 600;
+        }
+
+        .contact-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .contact-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 2px;
+        }
+
+        .contact-name {
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .contact-time {
+            font-size: 11px;
+            color: #8696a0;
+            margin-left: 8px;
+        }
+
+        .contact-preview {
+            font-size: 12px;
+            color: #8696a0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .unread-badge {
+            background: #25d366;
+            color: #111b21;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 8px;
+            padding: 0 5px;
+        }
+
+        .no-results,
+        .empty-state {
+            padding: 24px;
+            text-align: center;
+            color: #8696a0;
+            font-size: 14px;
+        }
+
+        .empty-state-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #0b141a;
+        }
+
+        .chat-header {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            border-bottom: 1px solid #202c33;
+            background: #202c33;
+        }
+
+        .back-button {
+            display: none;
+            margin-right: 8px;
+            border: none;
+            background: transparent;
+            color: #e9edef;
+            font-size: 18px;
+            cursor: pointer;
+        }
+
+        .chat-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #111b21;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+            font-weight: 600;
+        }
+
+        .chat-header-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-name {
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        .chat-status {
+            font-size: 11px;
+            color: #8696a0;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 24px;
+            background: url("https://i.imgur.com/7rFhF7W.png") repeat;
+            background-size: 400px 400px;
+        }
+
+        .message {
+            display: flex;
+            margin-bottom: 6px;
+        }
+
+        .message.sent {
+            justify-content: flex-end;
+        }
+
+        .message.received {
+            justify-content: flex-start;
+        }
+
+        .message-bubble {
+            max-width: 75%;
+            background: #202c33;
+            border-radius: 10px;
+            padding: 6px 8px 4px;
+            font-size: 13px;
+            position: relative;
+        }
+
+        .message.sent .message-bubble {
+            background: #005c4b;
+        }
+
+        .message-text {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .message-meta {
+            font-size: 10px;
+            color: #b1b3b5;
+            text-align: right;
+            margin-top: 2px;
+            display: flex;
+            gap: 4px;
+            justify-content: flex-end;
+            align-items: center;
+        }
+
+        .message-status.read {
+            color: #53bdeb;
+        }
+
+        .date-divider {
+            text-align: center;
+            margin: 12px 0;
+            font-size: 11px;
+        }
+
+        .date-divider span {
+            background: #202c33;
+            padding: 4px 10px;
+            border-radius: 8px;
+            color: #e9edef;
+        }
+
+        .chat-input {
+            padding: 8px 12px;
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+            border-top: 1px solid #202c33;
+            background: #202c33;
+        }
+
+        .chat-input textarea {
+            flex: 1;
+            resize: none;
+            border-radius: 8px;
+            border: none;
+            outline: none;
+            min-height: 38px;
+            max-height: 120px;
+            padding: 8px 10px;
+            background: #111b21;
+            color: #e9edef;
+        }
+
+        .chat-input button {
+            background: #00a884;
+            color: #111b21;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .chat-input button:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #202c33;
+            padding: 16px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 380px;
+        }
+
+        .modal-header {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+
+        .modal-field {
+            margin-bottom: 10px;
+        }
+
+        .modal-field label {
+            font-size: 12px;
+            display: block;
+            margin-bottom: 4px;
+            color: #8696a0;
+        }
+
+        .modal-field input {
+            width: 100%;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: none;
+            outline: none;
+            background: #111b21;
+            color: #e9edef;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 12px;
+            gap: 8px;
+        }
+
+        .modal-actions button {
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .btn-secondary {
+            background: #111b21;
+            color: #e9edef;
+        }
+
+        .btn-primary {
+            background: #00a884;
+            color: #111b21;
+        }
+
+        .settings-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #202c33;
+            color: #e9edef;
+            padding: 8px 14px;
+            border-radius: 16px;
+            font-size: 13px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 40;
+        }
+
+        .toast.show {
+            opacity: 1;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                max-width: none;
+            }
+
+            .back-button {
+                display: inline-block;
+            }
+
+            .sidebar.hide-mobile {
+                display: none;
+            }
+
+            .chat-container {
+                display: none;
+            }
+
+            .chat-container.show-mobile {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-header-title">Chats</div>
+            <div class="sidebar-header-actions">
+                <button onclick="openNewChatModal()">New</button>
+                <button onclick="openSettingsModal()">⚙</button>
+            </div>
+        </div>
+        <div class="search">
+            <input id="searchInput" type="text" placeholder="Search or start a new chat" oninput="handleSearch()">
+        </div>
+        <div id="contactsList" class="contacts-list"></div>
+    </div>
+
+    <div id="chatContainer" class="chat-container">
+        <div class="chat-header">
+            <button class="back-button" onclick="showSidebar()">←</button>
+            <div id="chatAvatar" class="chat-avatar"></div>
+            <div class="chat-header-info">
+                <div id="chatName" class="chat-name">Select a chat</div>
+                <div id="chatStatus" class="chat-status"></div>
+            </div>
+        </div>
+        <div id="messagesContainer" class="messages-container">
+            <div class="empty-state">
+                <div class="empty-state-icon">💬</div>
+                <div>Select a chat to start messaging</div>
+            </div>
+        </div>
+        <div class="chat-input">
+            <textarea id="messageInput" placeholder="Type a message" disabled></textarea>
+            <button id="sendBtn" onclick="sendMessage()" disabled>Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- New Chat Modal -->
+<div id="newChatModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">New Chat</div>
+        <div class="modal-field">
+            <label for="newChatNumber">Phone number</label>
+            <input id="newChatNumber" type="text" placeholder="e.g. 441234567890">
+        </div>
+        <div class="modal-field">
+            <label for="newChatName">Name (optional)</label>
+            <input id="newChatName" type="text" placeholder="Contact name">
+        </div>
+        <div class="modal-actions">
+            <button class="btn-secondary" onclick="closeModal('newChatModal')">Cancel</button>
+            <button class="btn-primary" onclick="createNewChat()">Start chat</button>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">Settings</div>
+        <div class="settings-row">
+            <span>Sound</span>
+            <input id="soundToggle" type="checkbox" onchange="toggleSound()">
+        </div>
+        <div class="settings-row">
+            <span>Desktop notifications</span>
+            <input id="desktopNotifToggle" type="checkbox" onchange="toggleDesktopNotif()">
+        </div>
+        <div class="modal-actions">
+            <button class="btn-primary" onclick="closeModal('settingsModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<div id="globalToast" class="toast"></div>
+<audio id="notificationSound" src="notification.mp3" preload="auto"></audio>
+
+<script>
+    // Simple global state
+    var state = {
+        contacts: {},
+        activeContact: null,
+        settings: {
+            soundEnabled: true,
+            desktopNotifEnabled: false
+        }
+    };
+
+    var notificationSound = document.getElementById('notificationSound');
+
+    function saveContactsToStorage() {
+        try {
+            localStorage.setItem('whatsappContacts', JSON.stringify(state.contacts));
+        } catch (e) {
+            console.error('Error saving contacts:', e);
+        }
+    }
+
+    function loadContactsFromStorage() {
+        try {
+            var saved = localStorage.getItem('whatsappContacts');
+            if (saved) {
+                state.contacts = JSON.parse(saved) || {};
+            }
+        } catch (e) {
+            console.error('Error loading contacts:', e);
+        }
+    }
+
+    function loadSettingsFromStorage() {
+        try {
+            var saved = localStorage.getItem('whatsappSettings');
+            if (saved) {
+                var parsed = JSON.parse(saved);
+                state.settings.soundEnabled = !!parsed.soundEnabled;
+                state.settings.desktopNotifEnabled = !!parsed.desktopNotifEnabled;
+            }
+        } catch (e) {
+            console.error('Error loading settings:', e);
+        }
+
+        document.getElementById('soundToggle').checked = state.settings.soundEnabled;
+        document.getElementById('desktopNotifToggle').checked = state.settings.desktopNotifEnabled;
+    }
+
+    function renderContacts() {
+        var list = document.getElementById('contactsList');
+        list.innerHTML = '';
+
+        var contactsArray = Object.keys(state.contacts).map(function (key) {
+            return state.contacts[key];
+        });
+
+        contactsArray.sort(function (a, b) {
+            return (b.lastMessageTime || 0) - (a.lastMessageTime || 0);
+        });
+
+        var searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+        if (searchTerm) {
+            contactsArray = contactsArray.filter(function (contact) {
+                return (
+                    (contact.name || '').toLowerCase().includes(searchTerm) ||
+                    (contact.number || '').toLowerCase().includes(searchTerm)
+                );
+            });
+        }
+
+        if (!contactsArray.length) {
+            var empty = document.createElement('div');
+            empty.className = 'no-results';
+            empty.textContent = searchTerm ? 'No results found' : 'No contacts yet';
+            list.appendChild(empty);
+            return;
+        }
+
+        contactsArray.forEach(function (contact) {
+            var item = document.createElement('div');
+            item.className = 'contact-item' + (state.activeContact === contact.number ? ' active' : '');
+            item.onclick = function () {
+                selectContact(contact.number);
+            };
+
+            var avatar = document.createElement('div');
+            avatar.className = 'contact-avatar';
+            avatar.textContent = (contact.name || contact.number).charAt(0).toUpperCase();
+
+            var info = document.createElement('div');
+            info.className = 'contact-info';
+
+            var header = document.createElement('div');
+            header.className = 'contact-header';
+
+            var name = document.createElement('div');
+            name.className = 'contact-name';
+            name.textContent = contact.name || contact.number;
+
+            var time = document.createElement('div');
+            time.className = 'contact-time';
+            time.textContent = formatTime(contact.lastMessageTime);
+
+            header.appendChild(name);
+            header.appendChild(time);
+
+            var preview = document.createElement('div');
+            preview.className = 'contact-preview';
+            preview.textContent = contact.lastMessage || 'No messages yet';
+
+            info.appendChild(header);
+            info.appendChild(preview);
+
+            item.appendChild(avatar);
+            item.appendChild(info);
+
+            if (contact.unreadCount > 0) {
+                var badge = document.createElement('div');
+                badge.className = 'unread-badge';
+                badge.textContent = contact.unreadCount;
+                item.appendChild(badge);
+            }
+
+            list.appendChild(item);
+        });
+    }
+
+    function formatTime(timestamp) {
+        if (!timestamp) return '';
+        var date = new Date(timestamp);
+        var now = new Date();
+        var sameDay = date.toDateString() === now.toDateString();
+
+        if (sameDay) {
+            return date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+        }
+
+        return date.toLocaleDateString([], {month: 'short', day: 'numeric'});
+    }
+
+    function handleSearch() {
+        renderContacts();
+    }
+
+    function selectContact(number) {
+        state.activeContact = number;
+        if (state.contacts[number]) {
+            state.contacts[number].unreadCount = 0;
+            saveContactsToStorage();
+        }
+
+        updateChatHeader(number);
+        renderContacts();
+        enableMessageInput(true);
+        loadMessages(number);
+        showChat();
+
+        fetch('/api/mark-read/' + encodeURIComponent(number), {
+            method: 'POST'
+        }).catch(function (error) {
+            console.error('Mark read failed:', error);
+        });
+    }
+
+    function updateChatHeader(number) {
+        var contact = state.contacts[number];
+        if (!contact) return;
+
+        document.getElementById('chatName').textContent = contact.name || contact.number;
+        document.getElementById('chatAvatar').textContent = (contact.name || contact.number).charAt(0).toUpperCase();
+        document.getElementById('chatStatus').textContent = contact.number;
+    }
+
+    function loadMessages(number) {
+        fetch('/api/messages/' + encodeURIComponent(number))
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (data) {
+                renderMessages(data.messages || []);
+            })
+            .catch(function (error) {
+                console.error('Load messages failed:', error);
+            });
+    }
+
+    function renderMessages(messages) {
+        var container = document.getElementById('messagesContainer');
+        container.innerHTML = '';
+
+        if (!messages.length) {
+            var empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.innerHTML = '<div class="empty-state-icon">💬</div><div>No messages yet</div>';
+            container.appendChild(empty);
+            return;
+        }
+
+        var lastDate = null;
+
+        messages.forEach(function (msg) {
+            var messageDate = new Date(msg.timestamp || Date.now()).toDateString();
+            if (messageDate !== lastDate) {
+                var divider = document.createElement('div');
+                divider.className = 'date-divider';
+                var span = document.createElement('span');
+                span.textContent = new Date(msg.timestamp || Date.now()).toLocaleDateString([], {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                });
+                divider.appendChild(span);
+                container.appendChild(divider);
+                lastDate = messageDate;
+            }
+
+            var messageEl = document.createElement('div');
+            messageEl.className = 'message ' + (msg.type === 'sent' ? 'sent' : 'received');
+
+            var bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+
+            var text = document.createElement('div');
+            text.className = 'message-text';
+            text.textContent = msg.text;
+
+            var meta = document.createElement('div');
+            meta.className = 'message-meta';
+            var time = document.createElement('span');
+            time.textContent = formatTime(msg.timestamp);
+            meta.appendChild(time);
+
+            if (msg.type === 'sent') {
+                var status = document.createElement('span');
+                status.className = 'message-status' + (msg.status === 'read' ? ' read' : '');
+                status.textContent = msg.status === 'read' ? '✓✓' : msg.status === 'delivered' ? '✓✓' : '✓';
+                meta.appendChild(status);
+            }
+
+            bubble.appendChild(text);
+            bubble.appendChild(meta);
+            messageEl.appendChild(bubble);
+            container.appendChild(messageEl);
+        });
+
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function sendMessage() {
+        var input = document.getElementById('messageInput');
+        var message = input.value.trim();
+
+        if (!message || !state.activeContact) {
+            return;
+        }
+
+        setSendButtonState(true);
+
+        fetch('/api/send-message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                to: state.activeContact,
+                message: message
+            })
+        }).then(function (response) {
+            if (!response.ok) {
+                throw new Error('Failed to send');
+            }
+            return response.json();
+        }).then(function () {
+            input.value = '';
+            updateInputHeight();
+            setSendButtonState(false);
+            syncContacts();
+            loadMessages(state.activeContact);
+        }).catch(function (error) {
+            console.error('Send failed:', error);
+            setSendButtonState(false);
+        });
+    }
+
+    function enableMessageInput(enabled) {
+        var input = document.getElementById('messageInput');
+        var sendBtn = document.getElementById('sendBtn');
+        input.disabled = !enabled;
+        sendBtn.disabled = !enabled || !input.value.trim();
+    }
+
+    function setSendButtonState(isSending) {
+        var sendBtn = document.getElementById('sendBtn');
+        sendBtn.disabled = isSending || !document.getElementById('messageInput').value.trim();
+        sendBtn.textContent = isSending ? '...' : 'Send';
+    }
+
+    function updateInputHeight() {
+        var input = document.getElementById('messageInput');
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        setSendButtonState(false);
+    }
+
+    function openModal(id) {
+        document.getElementById(id).classList.add('active');
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('active');
+    }
+
+    function openNewChatModal() {
+        openModal('newChatModal');
+    }
+
+    function openSettingsModal() {
+        openModal('settingsModal');
+    }
+
+    function createNewChat() {
+        var numberInput = document.getElementById('newChatNumber');
+        var nameInput = document.getElementById('newChatName');
+        var number = numberInput.value.trim();
+        var name = nameInput.value.trim();
+
+        if (!number) {
+            alert('Please enter a phone number.');
+            return;
+        }
+
+        fetch('/api/contacts/' + encodeURIComponent(number) + '/update', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({name: name || number})
+        }).then(function (response) {
+            if (!response.ok) {
+                throw new Error('Failed to create contact');
+            }
+            return response.json();
+        }).then(function () {
+            state.contacts[number] = {
+                number: number,
+                name: name || number,
+                lastMessage: '',
+                lastMessageTime: Date.now(),
+                unreadCount: 0
+            };
+            saveContactsToStorage();
+            renderContacts();
+            selectContact(number);
+            numberInput.value = '';
+            nameInput.value = '';
+            closeModal('newChatModal');
+        }).catch(function (error) {
+            console.error('New chat failed:', error);
+        });
+    }
+
+    function markAsUnread() {
+        if (!state.activeContact || !state.contacts[state.activeContact]) {
+            return;
+        }
+
+        state.contacts[state.activeContact].unreadCount = 1;
+        saveContactsToStorage();
+        renderContacts();
+    }
+
+    function showNotification(title, message) {
+        if (state.settings.soundEnabled && notificationSound) {
+            notificationSound.currentTime = 0;
+            notificationSound.play().catch(function () {
+            });
+        }
+
+        if (!state.settings.desktopNotifEnabled) {
+            return;
+        }
+
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification(title, {body: message});
+        }
+    }
+
+    function requestNotificationPermission() {
+        if (!('Notification' in window)) {
+            return;
+        }
+
+        if (Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    }
+
+    function toggleSound() {
+        state.settings.soundEnabled = document.getElementById('soundToggle').checked;
+        localStorage.setItem('whatsappSettings', JSON.stringify(state.settings));
+    }
+
+    function toggleDesktopNotif() {
+        state.settings.desktopNotifEnabled = document.getElementById('desktopNotifToggle').checked;
+        localStorage.setItem('whatsappSettings', JSON.stringify(state.settings));
+        requestNotificationPermission();
+    }
+
+    function showMessage(id, text) {
+        var element = document.getElementById(id);
+        if (!element) return;
+        element.textContent = text;
+        element.classList.add('show');
+        setTimeout(function () {
+            element.classList.remove('show');
+        }, 2000);
+    }
+
+    function showSidebar() {
+        document.getElementById('sidebar').classList.remove('hide-mobile');
+        document.getElementById('chatContainer').classList.remove('show-mobile');
+    }
+
+    function showChat() {
+        document.getElementById('sidebar').classList.add('hide-mobile');
+        document.getElementById('chatContainer').classList.add('show-mobile');
+    }
+
+    function pollMessages() {
+        if (state.activeContact) {
+            loadMessages(state.activeContact);
+        }
+    }
+
+    function syncContacts() {
+        fetch('/api/contacts')
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (data) {
+                if (!data || !Array.isArray(data.contacts)) return;
+                state.contacts = {};
+                data.contacts.forEach(function (c) {
+                    state.contacts[c.number] = c;
+                });
+                saveContactsToStorage();
+                renderContacts();
+            })
+            .catch(function (error) {
+                console.error('Sync failed:', error);
+            });
+    }
+
+    function init() {
+        loadSettingsFromStorage();
+        loadContactsFromStorage();
+        renderContacts();
+        enableMessageInput(false);
+        syncContacts();
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var messageInput = document.getElementById('messageInput');
+        messageInput.addEventListener('input', updateInputHeight);
+        messageInput.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+
+        requestNotificationPermission();
+        init();
+        setInterval(pollMessages, 5000);
+    });
+</script>
+</body>
+</html>
