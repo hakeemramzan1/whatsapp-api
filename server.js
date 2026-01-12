@@ -25,6 +25,9 @@ let config = {
     webhookVerifyToken: 'your_verify_token_123'
 };
 
+// 🔁 n8n POST webhook URL (the one that forwards to Zapier)
+const N8N_WEBHOOK_URL = 'https://hakeemirehs21ha.app.n8n.cloud/webhook-test/whatsapp';
+
 /* ===============================
    SAVE CONFIG
 ================================ */
@@ -207,7 +210,7 @@ app.get('/webhook', (req, res) => {
 /* ===============================
    WEBHOOK RECEIVER (POST)
 ================================ */
-app.post('/webhook', (req, res) => {
+app.post('/webhook', async (req, res) => {
     try {
         const body = req.body;
 
@@ -273,6 +276,18 @@ app.post('/webhook', (req, res) => {
                     }
                 });
             });
+        }
+
+        // 🔁 Forward the raw webhook payload to n8n so your old automations still run
+        try {
+            await axios.post(N8N_WEBHOOK_URL, body);
+            console.log('↪️ Forwarded webhook to n8n');
+        } catch (forwardErr) {
+            console.error(
+                '❌ Error forwarding to n8n:',
+                forwardErr.response?.data || forwardErr.message
+            );
+            // Still reply 200 to Meta so WhatsApp delivery isn't broken
         }
 
         res.sendStatus(200);
